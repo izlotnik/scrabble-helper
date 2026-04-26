@@ -106,23 +106,30 @@ def find_ngrok() -> str | None:
     return None
 
 
+def get_running_ngrok_url() -> str:
+    """Return the HTTPS public URL if ngrok is already running locally, else ''."""
+    try:
+        with urllib.request.urlopen(NGROK_API_URL, timeout=2) as resp:
+            data = json.loads(resp.read())
+            for tunnel in data.get("tunnels", []):
+                url = tunnel.get("public_url", "")
+                if url.startswith("https://"):
+                    return url
+            tunnels = data.get("tunnels", [])
+            if tunnels:
+                return tunnels[0].get("public_url", "")
+    except (urllib.error.URLError, OSError):
+        pass
+    return ""
+
+
 def wait_for_ngrok_url(timeout: int = NGROK_STARTUP_TIMEOUT) -> str:
     """Poll ngrok's local API until the HTTPS public URL appears, or timeout."""
     deadline = time.time() + timeout
     while time.time() < deadline:
-        try:
-            with urllib.request.urlopen(NGROK_API_URL, timeout=2) as resp:
-                data = json.loads(resp.read())
-                for tunnel in data.get("tunnels", []):
-                    url = tunnel.get("public_url", "")
-                    if url.startswith("https://"):
-                        return url
-                # Fallback: return first tunnel URL regardless of scheme
-                tunnels = data.get("tunnels", [])
-                if tunnels:
-                    return tunnels[0].get("public_url", "")
-        except (urllib.error.URLError, OSError):
-            pass
+        url = get_running_ngrok_url()
+        if url:
+            return url
         time.sleep(0.5)
     return ""
 
@@ -187,24 +194,49 @@ def main() -> None:
         print("[2] ngrok not found — running in local-only mode.")
         print("    Install ngrok (scoop install ngrok) to expose the server publicly.")
     else:
-        print(f"[2] Starting ngrok tunnel → port {args.port} …")
         static_domain = _read_static_domain()
-        ngrok_cmd = [ngrok]
-        if LOCAL_NGROK_CONFIG.exists():
-            ngrok_cmd += ["--config", str(LOCAL_NGROK_CONFIG)]
-            print(f"    (using project token from {LOCAL_NGROK_CONFIG.name})")
-        ngrok_cmd += ["http", str(args.port)]
-        if static_domain:
-            ngrok_cmd += ["--domain", static_domain]
-            print(f"    (static domain: {static_domain})")
 
-        ngrok_proc = subprocess.Popen(
-            ngrok_cmd,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.PIPE,
-        )
-        print("[3] Waiting for public URL …")
-        public_url = wait_for_ngrok_url()
+        # Reuse tunnel if ngrok is already running (avoids ERR_NGROK_334)
+        existing_url = get_running_ngrok_url()
+        if existing_url:
+            print(f"[2] ngrok already running — reusing existing tunnel.")
+            public_url = existing_url
+            ngrok_proc = None
+        else:
+            print(f"[2] Starting ngrok tunnel → port {args.port} …")
+            ngrok_cmd = [ngrok]
+            if LOCAL_NGROK_CONFIG.exists():
+                ngrok_cmd += ["--config", str(LOCAL_NGROK_CONFIG)]
+                print(f"    (using project token from {LOCAL_NGROK_CONFIG.name})")
+            ngrok_cmd += ["http", str(args.port)]
+            if static_domain:
+                ngrok_cmd += ["--domain", static_domain]
+                print(f"    (static domain: {static_domain})")
+
+            ngrok_proc = subprocess.Popen(
+                ngrok_cmd,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.PIPE,
+            )
+            print("[3] Waiting for public URL …")
+            public_url = wait_for_ngrok_url()
+
+            if not public_url:
+                rc = ngrok_proc.poll()
+                if rc is not None:
+                    stderr_out = ngrok_proc.stderr.read().decode(errors="replace").strip()
+                    print(f"\n  WARNING: ngrok exited (code {rc}).")
+                    if stderr_out:
+                        for line in stderr_out.splitlines()[:6]:
+                            print(f"    {line}")
+                    if "authtoken" in stderr_out.lower() or rc == 1:
+                        print("\n  To add a project-local token:")
+                        print("    python serve.py --add-token YOUR_TOKEN")
+                    print(f"\n  Running in local-only mode.")
+                else:
+                    print(f"\n  WARNING: ngrok URL not retrieved automatically.")
+                    print(f"  Check http://localhost:{NGROK_API_PORT} in your browser.")
+                ngrok_proc = None
 
         if public_url:
             print(f"\n{'='*54}")
@@ -212,23 +244,6 @@ def main() -> None:
             print(f"  Public : {public_url}")
             print(f"{'='*54}")
             print("  Share the Public URL with anyone on any network.")
-        else:
-            rc = ngrok_proc.poll()
-            if rc is not None:
-                # ngrok exited early — show its error output
-                stderr_out = ngrok_proc.stderr.read().decode(errors="replace").strip()
-                print(f"\n  WARNING: ngrok exited (code {rc}).")
-                if stderr_out:
-                    for line in stderr_out.splitlines()[:6]:
-                        print(f"    {line}")
-                if "authtoken" in stderr_out.lower() or rc == 1:
-                    print("\n  To add a project-local token:")
-                    print("    python serve.py --add-token YOUR_TOKEN")
-                print(f"\n  Running in local-only mode.")
-            else:
-                print(f"\n  WARNING: ngrok URL not retrieved automatically.")
-                print(f"  Check http://localhost:{NGROK_API_PORT} in your browser.")
-            ngrok_proc = None  # don't try to terminate a dead/unknown process
 
     # ── keep running until Ctrl-C ─────────────────────────────────────────────
     print(f"\n  Local app: http://localhost:{args.port}")
