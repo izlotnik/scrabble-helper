@@ -4,10 +4,10 @@ serve.py — start the Scrabble Helper web server, optionally with an ngrok tunn
 
 Usage
 -----
-    python serve.py                          # local server on port 8080
-    python serve.py --port 9000             # different port
-    python serve.py --add-token YOUR_TOKEN  # save ngrok token to project-local
-                                            # ngrok.yml, then exit
+    python serve.py                              # local server on port 8080
+    python serve.py --port 9000                 # different port
+    python serve.py --add-token YOUR_TOKEN      # save ngrok auth token, then exit
+    python serve.py --set-domain YOUR_DOMAIN    # save static domain, then exit
 
 ngrok is entirely optional.  If it is not installed, or if no auth token is
 configured, the server starts in local-only mode and a warning is printed.
@@ -19,8 +19,14 @@ Auth token setup (one-time, project-local)
     2. Copy your token from https://dashboard.ngrok.com/get-started/your-authtoken
     3. Run:  python serve.py --add-token YOUR_TOKEN
 
-The token is stored in ngrok.yml inside this project directory and is never
-written to the global ngrok config.  ngrok.yml is excluded from git.
+Static domain setup (optional — gives a permanent public URL)
+-------------------------------------------------------------
+    1. In the ngrok dashboard go to Cloud Edge → Domains
+    2. Claim your free static domain (e.g. fluffy-tiger-42.ngrok-free.app)
+    3. Run:  python serve.py --set-domain fluffy-tiger-42.ngrok-free.app
+
+Both the token and domain are stored in ngrok.yml inside this project directory
+and are never written to the global ngrok config.  ngrok.yml is excluded from git.
 """
 import argparse
 import json
@@ -54,6 +60,30 @@ _NGROK_FALLBACK_PATHS = [
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
+
+def _read_ngrok_config() -> dict:
+    """Parse ngrok.yml into a plain dict (authtoken, domain). Missing file → {}."""
+    cfg: dict = {}
+    if not LOCAL_NGROK_CONFIG.exists():
+        return cfg
+    for line in LOCAL_NGROK_CONFIG.read_text().splitlines():
+        if ":" in line:
+            key, _, val = line.partition(":")
+            key, val = key.strip(), val.strip()
+            if key in ("authtoken", "domain"):
+                cfg[key] = val
+    return cfg
+
+
+def _write_ngrok_config(cfg: dict) -> None:
+    """Write authtoken / domain back to ngrok.yml."""
+    lines = ['version: "2"']
+    if "authtoken" in cfg:
+        lines.append(f"authtoken: {cfg['authtoken']}")
+    if "domain" in cfg:
+        lines.append(f"domain: {cfg['domain']}")
+    LOCAL_NGROK_CONFIG.write_text("\n".join(lines) + "\n")
+
 
 def find_ngrok() -> str | None:
     """Return the path to the ngrok binary, or None if not installed."""
@@ -103,14 +133,22 @@ def main() -> None:
         "--add-token", metavar="TOKEN",
         help="Save an ngrok auth token to project-local ngrok.yml and exit",
     )
+    parser.add_argument(
+        "--set-domain", metavar="DOMAIN",
+        help="Save a static ngrok domain to project-local ngrok.yml and exit",
+    )
     args = parser.parse_args()
 
-    # ── one-time token setup ──────────────────────────────────────────────────
-    if args.add_token:
-        LOCAL_NGROK_CONFIG.write_text(
-            f'version: "2"\nauthtoken: {args.add_token.strip()}\n'
-        )
-        print(f"Token saved to {LOCAL_NGROK_CONFIG}")
+    # ── one-time config setup ─────────────────────────────────────────────────
+    if args.add_token or args.set_domain:
+        cfg = _read_ngrok_config()
+        if args.add_token:
+            cfg["authtoken"] = args.add_token.strip()
+            print(f"Token saved to {LOCAL_NGROK_CONFIG}")
+        if args.set_domain:
+            cfg["domain"] = args.set_domain.strip()
+            print(f"Domain saved to {LOCAL_NGROK_CONFIG}: {args.set_domain.strip()}")
+        _write_ngrok_config(cfg)
         print("Run 'python serve.py' to start the server.")
         return
 
@@ -141,11 +179,16 @@ def main() -> None:
         print("    Install ngrok (scoop install ngrok) to expose the server publicly.")
     else:
         print(f"[2] Starting ngrok tunnel → port {args.port} …")
+        ngrok_cfg = _read_ngrok_config()
+        static_domain = ngrok_cfg.get("domain", "")
         ngrok_cmd = [ngrok]
         if LOCAL_NGROK_CONFIG.exists():
             ngrok_cmd += ["--config", str(LOCAL_NGROK_CONFIG)]
             print(f"    (using project token from {LOCAL_NGROK_CONFIG.name})")
         ngrok_cmd += ["http", str(args.port)]
+        if static_domain:
+            ngrok_cmd += ["--domain", static_domain]
+            print(f"    (static domain: {static_domain})")
 
         ngrok_proc = subprocess.Popen(
             ngrok_cmd,
