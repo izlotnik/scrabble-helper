@@ -72,8 +72,10 @@ To share with others over the internet (requires a free [ngrok](https://ngrok.co
 
 ```bash
 python serve.py --add-token YOUR_NGROK_TOKEN   # one-time setup
-python serve.py                                 # prints a public URL
+python serve.py                                 # prints a random public URL
 ```
+
+The URL changes each session — copy it from the terminal and share it with whoever you're playing with.  See [docs/SETUP.md](docs/SETUP.md) for full ngrok setup instructions and troubleshooting.
 
 See [docs/SETUP.md](docs/SETUP.md) for full installation instructions.
 

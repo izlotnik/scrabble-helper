@@ -96,39 +96,66 @@ python scrabble.py phrase YOUIEVOL
 
 ## Public sharing with ngrok (optional)
 
-ngrok creates a temporary public HTTPS URL that tunnels to your local server.  This is useful for playing remotely with friends.
+ngrok creates a temporary public HTTPS URL that tunnels to your local server.  This is useful for playing remotely with friends — they open the URL in their browser with no setup required.
 
-### Install ngrok
+On the **free tier**, the URL is randomly assigned each session (e.g. `https://abc123.ngrok-free.app`).  It changes every time you restart, so just copy it from the terminal and share it (message, chat, etc.) at the start of each session.
+
+### 1. Install ngrok
+
+Minimum required version: **3.20.0**.  Install via a package manager to get automatic updates:
 
 ```powershell
-# Windows (scoop)
+# Windows — recommended (keeps ngrok up to date)
 scoop install ngrok
 
-# macOS (homebrew)
+# macOS
 brew install ngrok/ngrok/ngrok
 ```
 
 Or download directly from https://ngrok.com/download.
 
-### Add your auth token (one-time, project-local)
+### 2. Create a free account and get your auth token
 
-1. Sign up free at https://ngrok.com
-2. Copy your token from https://dashboard.ngrok.com/get-started/your-authtoken
-3. Run:
+1. Sign up at https://ngrok.com (free, no credit card)
+2. Go to https://dashboard.ngrok.com/get-started/your-authtoken
+3. Copy your token
+
+### 3. Save the token to your project (one-time)
 
 ```bash
 python serve.py --add-token YOUR_TOKEN_HERE
 ```
 
-This writes `ngrok.yml` in the project directory (excluded from git).  Your global ngrok configuration is not touched.
+This writes `ngrok.yml` in the project directory (gitignored).  Your global ngrok configuration is not touched.
 
-### Start with a public URL
+### 4. Start with a public URL
 
 ```bash
 python serve.py
 ```
 
-The public URL is printed in the terminal.  Share it with anyone — they can use the app in their browser without installing anything.
+The public URL is printed in the terminal.  Share it with anyone on any network.
+
+```
+======================================================
+  Local  : http://localhost:8080
+  Public : https://abc123.ngrok-free.app
+======================================================
+```
+
+Press `Ctrl+C` to stop both the server and the tunnel.
+
+---
+
+### ngrok free tier — important notes
+
+| Topic | Detail |
+|-------|--------|
+| URL persistence | Changes every session — share fresh each time |
+| Static domains | Require a paid ngrok plan |
+| Cloud Endpoints | **Avoid** — `.ngrok-free.dev` addresses are always-on cloud infrastructure that conflicts with agent tunnels and shows a default ngrok page instead of your app |
+
+> **If you accidentally created a Cloud Endpoint:** go to the ngrok dashboard → **Endpoints**, find the `.ngrok-free.dev` address, and delete it.  Then `python serve.py` will work normally.
 
 ---
 
@@ -147,3 +174,5 @@ Application logs are written to `logs/scrabble.log` (rotating, 10 MB × 5 files)
 | Port already in use | `python serve.py --port 9000` |
 | ngrok: version too old | `scoop update ngrok` or download from ngrok.com/download |
 | ngrok: authtoken not configured | `python serve.py --add-token YOUR_TOKEN` |
+| ngrok: ERR_NGROK_334 "endpoint already online" | You have a Cloud Endpoint registered — delete it in the ngrok dashboard under **Endpoints** |
+| ngrok: shows default ngrok page instead of app | Same cause as above — delete the Cloud Endpoint from the dashboard |

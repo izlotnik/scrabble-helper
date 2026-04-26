@@ -7,7 +7,7 @@ Usage
     python serve.py                              # local server on port 8080
     python serve.py --port 9000                 # different port
     python serve.py --add-token YOUR_TOKEN      # save ngrok auth token, then exit
-    python serve.py --set-domain YOUR_DOMAIN    # save static domain, then exit
+    python serve.py --set-domain YOUR_DOMAIN    # save static domain, then exit (paid)
 
 ngrok is entirely optional.  If it is not installed, or if no auth token is
 configured, the server starts in local-only mode and a warning is printed.
@@ -19,14 +19,21 @@ Auth token setup (one-time, project-local)
     2. Copy your token from https://dashboard.ngrok.com/get-started/your-authtoken
     3. Run:  python serve.py --add-token YOUR_TOKEN
 
-Static domain setup (optional — gives a permanent public URL)
--------------------------------------------------------------
-    1. In the ngrok dashboard go to Cloud Edge → Domains
-    2. Claim your free static domain (e.g. fluffy-tiger-42.ngrok-free.app)
-    3. Run:  python serve.py --set-domain fluffy-tiger-42.ngrok-free.app
+On the free tier, each session gets a randomly assigned HTTPS URL
+(e.g. https://abc123.ngrok-free.app).  The URL changes every time you
+restart — just copy it from the terminal and share with friends.
 
-Both the token and domain are stored in ngrok.yml inside this project directory
-and are never written to the global ngrok config.  ngrok.yml is excluded from git.
+Static domain (paid plans only)
+--------------------------------
+If you have a paid ngrok plan, you can reserve a permanent URL:
+    1. In the ngrok dashboard go to Domains → New Domain
+    2. Run:  python serve.py --set-domain your-domain.ngrok-free.app
+
+Note: avoid ngrok "Cloud Endpoints" (.ngrok-free.dev) — these are
+always-on cloud infrastructure that conflicts with agent tunnels.
+
+The auth token is stored in ngrok.yml inside this project directory and
+is never written to the global ngrok config.  ngrok.yml is excluded from git.
 """
 import argparse
 import json
