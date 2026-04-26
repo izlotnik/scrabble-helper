@@ -210,7 +210,7 @@ def main() -> None:
                 print(f"    (using project token from {LOCAL_NGROK_CONFIG.name})")
             ngrok_cmd += ["http", str(args.port)]
             if static_domain:
-                ngrok_cmd += ["--domain", static_domain]
+                ngrok_cmd += ["--url", static_domain]
                 print(f"    (static domain: {static_domain})")
 
             ngrok_proc = subprocess.Popen(
