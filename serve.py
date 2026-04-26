@@ -162,9 +162,14 @@ def main() -> None:
             cfg["authtoken"] = args.add_token.strip()
             _write_ngrok_config(cfg)
             print(f"Token saved to {LOCAL_NGROK_CONFIG}")
-        if args.set_domain:
-            NGROK_DOMAIN_FILE.write_text(args.set_domain.strip() + "\n")
-            print(f"Static domain saved to {NGROK_DOMAIN_FILE.name}: {args.set_domain.strip()}")
+        if args.set_domain is not None:
+            domain = args.set_domain.strip()
+            if domain:
+                NGROK_DOMAIN_FILE.write_text(domain + "\n")
+                print(f"Static domain saved to {NGROK_DOMAIN_FILE.name}: {domain}")
+            elif NGROK_DOMAIN_FILE.exists():
+                NGROK_DOMAIN_FILE.unlink()
+                print("Static domain cleared — ngrok will use a random URL.")
         print("Run 'python serve.py' to start the server.")
         return
 
