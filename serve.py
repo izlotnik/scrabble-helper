@@ -51,6 +51,10 @@ NGROK_STARTUP_TIMEOUT = 15
 # Project-local ngrok config file (token stored here, not in global config)
 LOCAL_NGROK_CONFIG = Path(__file__).parent / "ngrok.yml"
 
+# Stores the static domain separately — ngrok.yml only accepts authtoken,
+# not arbitrary keys, so we keep the domain in its own file.
+NGROK_DOMAIN_FILE = Path(__file__).parent / ".ngrok_domain"
+
 # Known install locations for ngrok on Windows when PATH is not yet refreshed
 _NGROK_FALLBACK_PATHS = [
     Path.home() / "AppData/Local/Microsoft/WinGet/Packages"
@@ -62,7 +66,7 @@ _NGROK_FALLBACK_PATHS = [
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 def _read_ngrok_config() -> dict:
-    """Parse ngrok.yml into a plain dict (authtoken, domain). Missing file → {}."""
+    """Parse ngrok.yml into a plain dict (authtoken only). Missing file → {}."""
     cfg: dict = {}
     if not LOCAL_NGROK_CONFIG.exists():
         return cfg
@@ -70,19 +74,24 @@ def _read_ngrok_config() -> dict:
         if ":" in line:
             key, _, val = line.partition(":")
             key, val = key.strip(), val.strip()
-            if key in ("authtoken", "domain"):
+            if key == "authtoken":
                 cfg[key] = val
     return cfg
 
 
 def _write_ngrok_config(cfg: dict) -> None:
-    """Write authtoken / domain back to ngrok.yml."""
+    """Write authtoken to ngrok.yml (domain is stored separately in .ngrok_domain)."""
     lines = ['version: "2"']
     if "authtoken" in cfg:
         lines.append(f"authtoken: {cfg['authtoken']}")
-    if "domain" in cfg:
-        lines.append(f"domain: {cfg['domain']}")
     LOCAL_NGROK_CONFIG.write_text("\n".join(lines) + "\n")
+
+
+def _read_static_domain() -> str:
+    """Return the saved static domain, or empty string if not set."""
+    if NGROK_DOMAIN_FILE.exists():
+        return NGROK_DOMAIN_FILE.read_text().strip()
+    return ""
 
 
 def find_ngrok() -> str | None:
@@ -141,14 +150,14 @@ def main() -> None:
 
     # ── one-time config setup ─────────────────────────────────────────────────
     if args.add_token or args.set_domain:
-        cfg = _read_ngrok_config()
         if args.add_token:
+            cfg = _read_ngrok_config()
             cfg["authtoken"] = args.add_token.strip()
+            _write_ngrok_config(cfg)
             print(f"Token saved to {LOCAL_NGROK_CONFIG}")
         if args.set_domain:
-            cfg["domain"] = args.set_domain.strip()
-            print(f"Domain saved to {LOCAL_NGROK_CONFIG}: {args.set_domain.strip()}")
-        _write_ngrok_config(cfg)
+            NGROK_DOMAIN_FILE.write_text(args.set_domain.strip() + "\n")
+            print(f"Static domain saved to {NGROK_DOMAIN_FILE.name}: {args.set_domain.strip()}")
         print("Run 'python serve.py' to start the server.")
         return
 
@@ -179,8 +188,7 @@ def main() -> None:
         print("    Install ngrok (scoop install ngrok) to expose the server publicly.")
     else:
         print(f"[2] Starting ngrok tunnel → port {args.port} …")
-        ngrok_cfg = _read_ngrok_config()
-        static_domain = ngrok_cfg.get("domain", "")
+        static_domain = _read_static_domain()
         ngrok_cmd = [ngrok]
         if LOCAL_NGROK_CONFIG.exists():
             ngrok_cmd += ["--config", str(LOCAL_NGROK_CONFIG)]

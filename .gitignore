@@ -4,6 +4,7 @@ __pycache__/
 *.pyo
 logs/
 ngrok.yml
+.ngrok_domain
 
 # Downloaded dictionary — fetch with: python scripts/download_dict.py
 data/csw.txt
