@@ -1,0 +1,388 @@
+{% extends "base.html" %}
+{% block title %}Scrabble Helper — CSW21{% endblock %}
+
+{% macro shuffle_btn(input_id) %}
+<button type="button" class="scramble-btn" onclick="scrambleInput('{{ input_id }}')" title="Shuffle letters">
+  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/>
+    <polyline points="21 16 21 21 16 21"/><line x1="15" y1="15" x2="21" y2="21"/>
+    <line x1="4" y1="4" x2="9" y2="9"/>
+  </svg>
+</button>
+{% endmacro %}
+
+{% block content %}
+
+{# ── Tab bar ─────────────────────────────────────────────────────────────── #}
+<nav class="tabs">
+  <a href="/validate" class="tab {% if mode=='validate' %}tab--active{% endif %}">Validate Word</a>
+  <a href="/suggest"  class="tab {% if mode=='suggest'  %}tab--active{% endif %}">Suggest from Rack</a>
+  <a href="/pattern"  class="tab {% if mode=='pattern'  %}tab--active{% endif %}">Pattern Search</a>
+  <a href="/phrase"   class="tab {% if mode=='phrase'   %}tab--active{% endif %}">Phrase Builder</a>
+</nav>
+
+{# ── VALIDATE ────────────────────────────────────────────────────────────── #}
+{% if mode == 'validate' %}
+<section class="panel">
+  <h2>Validate a Word</h2>
+  <p class="hint">Check whether a word is valid in the CSW21 (Collins Scrabble Words 2021) dictionary.</p>
+
+  <form method="get" action="/validate" class="form-row">
+    <div class="field field--grow">
+      <label for="word">Word <span class="req">*</span></label>
+      <input id="word" name="word" type="text" placeholder="e.g. STEW"
+             value="{{ params.get('word','') }}" autocomplete="off" autofocus>
+    </div>
+    <button type="submit" class="btn">Check</button>
+  </form>
+
+  {% if error %}
+    <p class="msg msg--error">{{ error }}</p>
+  {% elif valid is not none %}
+    {% if valid %}
+      <div class="verdict verdict--valid">
+        <strong>{{ word_info.word }}</strong> is a valid CSW21 word
+        &mdash; <a href="{{ word_info.collins_url }}" target="_blank" rel="noopener">Collins Dictionary</a>
+        {% if word_info.base_forms %}
+          <div class="base-forms">
+            Collins may not list inflected forms &mdash; try base form(s):
+            {% for b in word_info.base_forms %}
+              <a href="{{ b.url }}" target="_blank" rel="noopener" class="base-link">{{ b.word }}</a>{% if not loop.last %},{% endif %}
+            {% endfor %}
+          </div>
+        {% elif word_info.all_candidates %}
+          <div class="base-forms base-forms--none">
+            Collins may not list this word. Tried base forms
+            ({{ word_info.all_candidates | join(', ') }}) &mdash; none found in CSW21.
+          </div>
+        {% endif %}
+      </div>
+    {% else %}
+      <div class="verdict verdict--invalid">
+        <strong>{{ word_info.word }}</strong> is NOT in the CSW21 dictionary
+        {% if word_info.base_forms %}
+          <div class="base-forms">
+            Did you mean a base form?
+            {% for b in word_info.base_forms %}
+              <a href="{{ b.url }}" target="_blank" rel="noopener" class="base-link">{{ b.word }}</a>{% if not loop.last %},{% endif %}
+            {% endfor %}
+          </div>
+        {% endif %}
+      </div>
+    {% endif %}
+  {% endif %}
+</section>
+
+{# ── SUGGEST ─────────────────────────────────────────────────────────────── #}
+{% elif mode == 'suggest' %}
+<section class="panel">
+  <h2>Suggest Words from Rack</h2>
+
+  <details class="help-box">
+    <summary>Format guide</summary>
+    <dl>
+      <dt>Rack tiles</dt>
+      <dd>Enter up to 7 letters (A–Z). Use <code>?</code> for a blank tile (acts as any letter, scores 0 points).<br>
+          Example: <code>RSTLNEI</code> &nbsp;|&nbsp; with blank: <code>RST?NEI</code></dd>
+      <dt>Starts / Ends / Contains</dt>
+      <dd>Letters already on the board — <strong>do not need to be in your rack</strong>. Multi-letter ok.<br>
+          Use <code>|</code> to list alternatives (OR): <code>Y|L</code> = word contains Y or L.<br>
+          e.g. rack <code>STLNEI</code> + Contains <code>Y|L</code> finds words that pass through a board Y or L.</dd>
+      <dt>Length</dt>
+      <dd>Exact number of letters (2–7).</dd>
+      <dt>Pattern mask</dt>
+      <dd>
+        Mask applied to the word shape. Literal letters are treated as board tiles (free — not from rack):<br>
+        <code>_</code> = one letter from your rack &nbsp;|&nbsp;
+        <code>*</code> = zero or more letters &nbsp;|&nbsp;
+        <code>A-Z</code> = board tile at that position<br>
+        Example: <code>_A__R</code> = A and R on board, you supply the other 3 letters<br>
+        Example: <code>____S</code> = 5-letter word ending in board S
+      </dd>
+    </dl>
+  </details>
+
+  <form method="get" action="/suggest" class="finder-form">
+    <div class="field-group">
+      <div class="field field--wide">
+        <label for="rack">Your tiles <span class="req">*</span>
+          <span class="hint-inline">A–Z, up to 7 tiles &nbsp;|&nbsp; <code>?</code> = blank tile</span>
+        </label>
+        <div class="input-with-action">
+          <input id="rack" name="rack" type="text" maxlength="7"
+                 placeholder="e.g. RSTLNEI  or  RST?NEI"
+                 value="{{ params.get('rack','') }}" autocomplete="off" autofocus required>
+          {{ shuffle_btn('rack') }}
+        </div>
+      </div>
+    </div>
+    <div class="field-group">
+      <div class="field field--grow">
+        <label for="starts_with">Starts with</label>
+        <input id="starts_with" name="starts_with" type="text" maxlength="200"
+               placeholder="e.g. RE  or  A|B|C" value="{{ params.get('starts_with','') }}">
+      </div>
+      <div class="field field--grow">
+        <label for="ends_with">Ends with</label>
+        <input id="ends_with" name="ends_with" type="text" maxlength="200"
+               placeholder="e.g. ING|ED|TION" value="{{ params.get('ends_with','') }}">
+      </div>
+      <div class="field field--grow">
+        <label for="contains">Contains</label>
+        <input id="contains" name="contains" type="text" maxlength="200"
+               placeholder="e.g. Y|L  or  QU" value="{{ params.get('contains','') }}">
+      </div>
+      <div class="field field--short">
+        <label for="length">Length</label>
+        <input id="length" name="length" type="number" min="2" max="7"
+               placeholder="2–7" value="{{ params.get('length','') }}">
+      </div>
+      <div class="field field--short">
+        <label for="top">Top N</label>
+        <input id="top" name="top" type="number" min="1" max="999"
+               placeholder="all" value="{{ params.get('top','') }}">
+      </div>
+      <div class="field field--check">
+        <label>&nbsp;</label>
+        <label class="check-label">
+          <input type="checkbox" name="per_group" value="1"
+                 {% if params.get('per_group') %}checked{% endif %}>
+          Per group
+        </label>
+      </div>
+    </div>
+    <div class="field-group">
+      <div class="field field--wide">
+        <label for="pattern">Pattern mask
+          <span class="hint-inline"><code>_</code> = rack tile &nbsp;|&nbsp; <code>*</code> = any letters &nbsp;|&nbsp; A-Z = board tile (free)</span>
+        </label>
+        <input id="pattern" name="pattern" type="text" maxlength="30"
+               placeholder="e.g. *T_W*  or  ____S"
+               value="{{ params.get('pattern','') }}">
+      </div>
+    </div>
+    <button type="submit" class="btn">Find Words</button>
+  </form>
+
+  {% if error %}
+    <p class="msg msg--error">{{ error }}</p>
+  {% elif grouped is not none %}
+    {% if grouped %}
+      <p class="results-count">{{ total }} word{{ 's' if total != 1 }} found — grouped by length</p>
+      {% for length, items in grouped.items() %}
+        <div class="word-group">
+          <h3 class="group-heading">
+            {{ length }} letter{{ 's' if length != 1 }}
+            <span class="group-count">({{ items | length }})</span>
+            {% if length in bingo_lengths %}<span class="bingo-badge">★ BINGO</span>{% endif %}
+          </h3>
+          <table class="results-table">
+            <thead><tr><th>#</th><th>Word</th><th>Score</th><th>Definition</th></tr></thead>
+            <tbody>
+              {% for word, score, rt in items %}
+              <tr {% if rt == rack_size and rack_size >= 7 %}class="bingo"{% endif %}>
+                <td class="num">{{ loop.index }}</td>
+                <td class="word">{{ word }}</td>
+                <td class="score">{{ score }}</td>
+                <td class="def">
+                  <a href="https://www.collinsdictionary.com/dictionary/english/{{ word | lower }}"
+                     target="_blank" rel="noopener">Collins&nbsp;Scrabble</a>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% endfor %}
+    {% else %}
+      <p class="msg msg--none">No CSW21 words found for those tiles and filters.</p>
+    {% endif %}
+  {% endif %}
+</section>
+
+{# ── PATTERN ─────────────────────────────────────────────────────────────── #}
+{% elif mode == 'pattern' %}
+<section class="panel">
+  <h2>Pattern Search</h2>
+  <p class="hint">Find all CSW21 words matching a pattern — no rack needed.</p>
+
+  <details class="help-box">
+    <summary>Pattern format guide</summary>
+    <dl>
+      <dt><code>_</code> (underscore)</dt>
+      <dd>Exactly one unknown letter. Use one underscore per unknown position.<br>
+          Example: <code>_T_W_</code> = 5-letter word with T at position 2, W at position 4</dd>
+      <dt><code>*</code> (asterisk)</dt>
+      <dd>Zero or more letters — variable length gap.<br>
+          Example: <code>*ING</code> = any word ending in ING<br>
+          Example: <code>*QU*</code> = any word containing QU</dd>
+      <dt><code>A–Z</code></dt>
+      <dd>Literal letter — must appear exactly at that position.<br>
+          Example: <code>S*S</code> = any word starting and ending with S</dd>
+    </dl>
+    <p class="help-examples">
+      <strong>More examples:</strong>&nbsp;
+      <code>___</code> (all 3-letter words) &nbsp;|&nbsp;
+      <code>*T_W*</code> (T, one letter, then W, anywhere) &nbsp;|&nbsp;
+      <code>____S</code> (5-letter words ending S) &nbsp;|&nbsp;
+      <code>^QU*</code> — use literal Q or Z for high-value setups
+    </p>
+  </details>
+
+  <form method="get" action="/pattern" class="form-row">
+    <div class="field field--grow">
+      <label for="pat">Pattern <span class="req">*</span>
+        <span class="hint-inline"><code>_</code> = one letter &nbsp;|&nbsp; <code>*</code> = any letters &nbsp;|&nbsp; A-Z = literal</span>
+      </label>
+      <input id="pat" name="pattern" type="text" maxlength="30"
+             placeholder="e.g. *ING  or  _T_W_  or  S*S"
+             value="{{ params.get('pattern','') }}" autocomplete="off" autofocus required>
+    </div>
+    <div class="field field--short">
+      <label for="ptop">Top N</label>
+      <input id="ptop" name="top" type="number" min="1" max="9999"
+             placeholder="all" value="{{ params.get('top','') }}">
+    </div>
+    <div class="field field--check">
+      <label>&nbsp;</label>
+      <label class="check-label">
+        <input type="checkbox" name="per_group" value="1"
+               {% if params.get('per_group') %}checked{% endif %}>
+        Per group
+      </label>
+    </div>
+    <button type="submit" class="btn">Search</button>
+  </form>
+
+  {% if error %}
+    <p class="msg msg--error">{{ error }}</p>
+  {% elif grouped is not none %}
+    {% if grouped %}
+      <p class="results-count">
+        {{ total }} word{{ 's' if total != 1 }} found
+        {% if shown is defined and shown != total %}
+          &mdash; showing {{ shown }}
+          {% if params.get('per_group') %} (top {{ params.get('top') }} per group){% else %} (top {{ params.get('top') }} overall){% endif %}
+        {% else %}
+          &mdash; grouped by length
+        {% endif %}
+      </p>
+      {% for length, words in grouped.items() %}
+        <div class="word-group">
+          <h3 class="group-heading">
+            {{ length }} letter{{ 's' if length != 1 }}
+            <span class="group-count">({{ words | length }})</span>
+          </h3>
+          <div class="word-cloud">
+            {% for word in words %}
+              <a href="https://www.collinsdictionary.com/dictionary/english/{{ word | lower }}"
+                 target="_blank" rel="noopener" class="word-chip">{{ word }}</a>
+            {% endfor %}
+          </div>
+        </div>
+      {% endfor %}
+    {% else %}
+      <p class="msg msg--none">No CSW21 words match that pattern.</p>
+    {% endif %}
+  {% endif %}
+</section>
+{# ── PHRASE BUILDER ──────────────────────────────────────────────────────── #}
+{% elif mode == 'phrase' %}
+<section class="panel">
+  <h2>Phrase Builder</h2>
+  <p class="hint">Enter letters and find all combinations of words that use every letter exactly — e.g. YOUIEVOL &rarr; I + LOVE + YOU.</p>
+
+  <details class="help-box">
+    <summary>How it works</summary>
+    <dl>
+      <dt>Letters</dt>
+      <dd>Up to 15 letters A–Z (no blanks). The finder returns every set of valid words that uses <em>all</em> your letters exactly.</dd>
+      <dt>Min word length</dt>
+      <dd>Shortest allowed word (default 1 &mdash; includes common English words A and I).</dd>
+      <dt>Max words</dt>
+      <dd>Maximum words per phrase (default 4). Higher values slow the search.</dd>
+      <dt>Results</dt>
+      <dd>Words are shown in sorted order &mdash; rearrange them into the phrase you want.</dd>
+    </dl>
+    <p class="help-examples">
+      <strong>Examples:</strong>&nbsp;
+      <code>YOUIEVOL</code> &rarr; I + LOVE + YOU &nbsp;|&nbsp;
+      <code>LINSERTS</code> &rarr; LINTERS + S? &nbsp;|&nbsp;
+      longer inputs may take a moment
+    </p>
+  </details>
+
+  <form method="get" action="/phrase" class="finder-form">
+    <div class="field-group">
+      <div class="field field--wide">
+        <label for="ph_letters">Letters <span class="req">*</span>
+          <span class="hint-inline">A–Z only, up to 20 letters, no blanks</span>
+        </label>
+        <div class="input-with-action">
+          <input id="ph_letters" name="letters" type="text" maxlength="20"
+                 placeholder="e.g. YOUIEVOL"
+                 value="{{ params.get('letters','') }}" autocomplete="off" autofocus required>
+          {{ shuffle_btn('ph_letters') }}
+        </div>
+      </div>
+      <div class="field field--short">
+        <label for="ph_min_len">Min word</label>
+        <input id="ph_min_len" name="min_len" type="number" min="1" max="5"
+               placeholder="1" value="{{ params.get('min_len','1') }}">
+      </div>
+      <div class="field field--short">
+        <label for="ph_max_words">Max words</label>
+        <input id="ph_max_words" name="max_words" type="number" min="2" max="6"
+               placeholder="4" value="{{ params.get('max_words','4') }}">
+      </div>
+    </div>
+    <div class="field-group">
+      <div class="field field--wide">
+        <label for="ph_names">Names / custom words
+          <span class="hint-inline">words not in CSW21, e.g. proper names &mdash; space or comma separated</span>
+        </label>
+        <input id="ph_names" name="names" type="text"
+               placeholder="e.g. ILYA ZLOTNIK"
+               value="{{ params.get('names','') }}" autocomplete="off">
+      </div>
+      <div class="field field--check">
+        <label>&nbsp;</label>
+        <label class="check-label">
+          <input type="checkbox" name="common_only" value="1"
+                 {% if params.get('common_only') %}checked{% endif %}>
+          Common words only
+        </label>
+      </div>
+    </div>
+    <button type="submit" class="btn">Build</button>
+  </form>
+
+  {% if error %}
+    <p class="msg msg--error">{{ error }}</p>
+  {% elif combos is not none %}
+    {% if combos %}
+      <p class="results-count">
+        {{ combos | length }} combination{{ 's' if combos | length != 1 }}
+        {% if total != combos | length %} of {{ total }} found{% endif %}
+        {% if timed_out %}&mdash; <span class="timeout-notice">search stopped after 8 s (partial results)</span>{% endif %}
+      </p>
+      <div class="phrase-list">
+        {% for item in combos %}
+          <div class="phrase-row">
+            {% if item.common %}<span class="badge-common" title="All words are common English words">phrase</span>{% endif %}
+            {% for word in item.words %}
+              <a href="https://www.collinsdictionary.com/dictionary/english/{{ word | lower }}"
+                 target="_blank" rel="noopener" class="word-chip">{{ word }}</a>
+              {% if not loop.last %}<span class="phrase-plus">+</span>{% endif %}
+            {% endfor %}
+          </div>
+        {% endfor %}
+      </div>
+    {% else %}
+      <p class="msg msg--none">No combinations found. Try fewer letters, a higher Max words limit, or uncheck "Common words only".</p>
+    {% endif %}
+  {% endif %}
+</section>
+{% endif %}
+
+{% endblock %}

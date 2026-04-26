@@ -1,0 +1,12 @@
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+logs/
+ngrok.yml
+
+# Downloaded dictionary — fetch with: python scripts/download_dict.py
+data/csw.txt
+
+# Local AI assistant memory — not for public repos
+.claude/
