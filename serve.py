@@ -181,7 +181,9 @@ def main() -> None:
         return
 
     # ── start uvicorn ─────────────────────────────────────────────────────────
-    venv_uvicorn = Path(".venv/Scripts/uvicorn")
+    # uvicorn sits next to the interpreter running this script (the venv lives
+    # outside the project folder, so there is no local .venv to look in).
+    venv_uvicorn = Path(sys.executable).with_name("uvicorn.exe" if sys.platform == "win32" else "uvicorn")
     uvicorn_bin = str(venv_uvicorn) if venv_uvicorn.exists() else "uvicorn"
 
     print(f"\n[1] Starting Scrabble Helper on http://localhost:{args.port} …")
@@ -195,7 +197,7 @@ def main() -> None:
     if server.poll() is not None:
         sys.exit(
             "ERROR: uvicorn failed to start.  Run manually to see the error:\n"
-            f"  .venv\\Scripts\\uvicorn app.main:app --port {args.port}"
+            f"  {uvicorn_bin} app.main:app --port {args.port}"
         )
 
     # ── attempt ngrok tunnel (optional) ───────────────────────────────────────
